@@ -1,22 +1,8 @@
-"""From-scratch reference functions for IC-272 Labs 4 through 9.
-
-Only NumPy, pandas and matplotlib are needed by the companion notebook.
-Loss convention: Lab 4 uses MSE; ridge uses SSE + lam * ||w||^2;
-lasso uses MSE + lam * ||w||_1, following the Lab 4 gradient and Lab 5 H4
-threshold t = lr * lam. Consequently the same numeric lam is not the
-same penalty strength in ridge and lasso.
-
-The two named CV functions reproduce CV on their supplied features,
-as in the handouts. The separately named fold-scaled alternatives fit
-standardisation inside each fold and must receive raw training features.
-"""
-
 import numpy as np
 import pandas as pd
 
 
 def train_test_split_scratch(X, y, test_frac, seed):
-    """Lab 4: first int(n * test_frac) permuted indices are the test set."""
     X, y = np.asarray(X, float), np.asarray(y)
     idx = np.random.default_rng(seed).permutation(len(y))
     n_test = int(len(y) * test_frac)
@@ -35,7 +21,6 @@ def fit_simple_lr(x, y):
 
 
 def design_matrix(X):
-    """X has shape (n, d); return A with shape (n, d + 1)."""
     X = np.asarray(X, float)
     if X.ndim != 2:
         raise ValueError("Pass a two-dimensional feature matrix.")
@@ -44,18 +29,15 @@ def design_matrix(X):
 
 def fit_normal_equation(X, y):
     A = design_matrix(X)
-    # Solve the assembled system; an explicit inverse is less stable and unnecessary.
     return np.linalg.solve(A.T @ A, A.T @ np.asarray(y, float))
 
 
 def fit_gradient_descent(X, y, lr, n_iters):
-    """Minimise mean squared error; record loss after each update."""
     A, y = design_matrix(X), np.asarray(y, float)
     theta, losses = np.zeros(A.shape[1]), []
     for _ in range(n_iters):
         theta -= lr * (2 / len(y)) * (A.T @ (A @ theta - y))
         losses.append(float(np.mean((A @ theta - y) ** 2)))
-    # Lab 4 explicitly expects overflow for one supplied learning rate.
     return theta, losses
 
 
@@ -72,11 +54,6 @@ def r2_score_scratch(y_true, y_pred):
 
 
 def standardise(X_train, X_test):
-    """Fit column means/scales on training data; transform both matrices.
-
-    A constant column uses an effective scale of 1 and becomes zero in
-    training. Return the effective scales actually used for prediction.
-    """
     X_train, X_test = np.asarray(X_train, float), np.asarray(X_test, float)
     mu = X_train.mean(axis=0)
     sigma = X_train.std(axis=0, ddof=0)
@@ -85,13 +62,11 @@ def standardise(X_train, X_test):
 
 
 def original_units(theta, mu, sigma):
-    """Return [intercept, weights...] with identical predictions on raw X."""
     w = np.asarray(theta)[1:] / sigma
     return np.r_[theta[0] - np.dot(w, mu), w]
 
 
 def fit_ridge(X, y, lam):
-    """Minimise SSE + lam * sum(theta[1:] ** 2); exempt the intercept."""
     A = design_matrix(X)
     penalty = np.eye(A.shape[1])
     penalty[0, 0] = 0
@@ -105,7 +80,6 @@ def _fold_indices(n, k, seed):
 
 
 def k_fold_cv(X, y, lam, k=5, seed=0):
-    """Mean fold RMSE on supplied features; does not refit scaling."""
     X, y = np.asarray(X, float), np.asarray(y, float)
     folds, scores = _fold_indices(len(y), k, seed), []
     for i, va in enumerate(folds):
@@ -116,7 +90,6 @@ def k_fold_cv(X, y, lam, k=5, seed=0):
 
 
 def k_fold_cv_ridge_fold_scaled(X, y, lam, k=5, seed=0):
-    """Strict CV: receive RAW training X, refit scaling in every fold."""
     X, y = np.asarray(X, float), np.asarray(y, float)
     folds, scores = _fold_indices(len(y), k, seed), []
     for i, va in enumerate(folds):
@@ -133,7 +106,6 @@ def soft_threshold(v, t):
 
 
 def fit_lasso(X, y, lam, lr=0.05, n_iters=30000):
-    """Proximal descent for MSE + lam * ||theta[1:]||_1."""
     A, y = design_matrix(X), np.asarray(y, float)
     theta = np.zeros(A.shape[1])
     for _ in range(n_iters):
@@ -143,12 +115,10 @@ def fit_lasso(X, y, lam, lr=0.05, n_iters=30000):
 
 
 def pairwise_distances(X_query, X_train):
-    """Euclidean distances, shape (n_query, n_train); no query-row loop."""
     X_query, X_train = np.asarray(X_query, float), np.asarray(X_train, float)
     squared = (np.sum(X_query ** 2, axis=1)[:, None]
                + np.sum(X_train ** 2, axis=1)[None, :]
                - 2 * X_query @ X_train.T)
-    # Floating point cancellation can make a squared distance slightly negative.
     return np.sqrt(np.maximum(squared, 0))
 
 
@@ -162,7 +132,6 @@ def _knn_neighbours(X_train, y_train, X_query, k):
 
 def knn_predict(X_train, y_train, X_query, k):
     _, _, neighbour_labels = _knn_neighbours(X_train, y_train, X_query, k)
-    # The handout says 'exceeding 0.5': an exact tie votes for class 0.
     return (neighbour_labels.mean(axis=1) > 0.5).astype(int)
 
 
@@ -174,7 +143,6 @@ def knn_predict_weighted(X_train, y_train, X_query, k):
 
 
 def k_fold_cv_knn(X, y, k, folds=5, seed=0):
-    """Mean fold accuracy on supplied features; does not refit scaling."""
     X, y = np.asarray(X, float), np.asarray(y, int)
     groups, scores = _fold_indices(len(y), folds, seed), []
     for i, va in enumerate(groups):
@@ -184,7 +152,6 @@ def k_fold_cv_knn(X, y, k, folds=5, seed=0):
 
 
 def k_fold_cv_knn_fold_scaled(X, y, k, folds=5, seed=0):
-    """Strict CV: receive RAW training X, refit scaling in every fold."""
     X, y = np.asarray(X, float), np.asarray(y, int)
     groups, scores = _fold_indices(len(y), folds, seed), []
     for i, va in enumerate(groups):
@@ -195,7 +162,6 @@ def k_fold_cv_knn_fold_scaled(X, y, k, folds=5, seed=0):
 
 
 def confusion_matrix_scratch(y_true, y_pred):
-    """Rows = actual class, columns = predicted class: [[TN, FP], [FN, TP]]."""
     y_true, y_pred = np.asarray(y_true, int), np.asarray(y_pred, int)
     return np.array([[np.sum((y_true == 0) & (y_pred == 0)),
                       np.sum((y_true == 0) & (y_pred == 1))],
@@ -204,7 +170,6 @@ def confusion_matrix_scratch(y_true, y_pred):
 
 
 def classification_metrics(y_true, y_pred):
-    """Positive class is 1; use 0 for precision/recall when denominator is 0."""
     tn, fp, fn, tp = confusion_matrix_scratch(y_true, y_pred).ravel()
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
@@ -214,24 +179,17 @@ def classification_metrics(y_true, y_pred):
 
 
 def sigmoid(z):
-    """Equivalent to 1/(1+exp(-z)), without overflow at large negative z."""
     z = np.asarray(z, float)
     e = np.exp(-np.abs(z))
     return np.where(z >= 0, 1 / (1 + e), e / (1 + e))
 
 
 def log_likelihood(X, y, theta):
-    """Total Bernoulli log-likelihood; X has no intercept column.
-
-    y*z - logaddexp(0,z) is the stable equivalent of y*log(p) +
-    (1-y)*log(1-p); it avoids log(0) without altering probabilities.
-    """
     z = design_matrix(X) @ theta
     return float(np.sum(np.asarray(y) * z - np.logaddexp(0, z)))
 
 
 def fit_logistic(X, y, lr=0.1, n_iters=2000):
-    """Maximise average log-likelihood; record total likelihood each iteration."""
     A, y = design_matrix(X), np.asarray(y, float)
     theta, history = np.zeros(A.shape[1]), []
     for _ in range(n_iters):
@@ -242,7 +200,6 @@ def fit_logistic(X, y, lr=0.1, n_iters=2000):
 
 
 def roc_curve_scratch(y_true, p):
-    """Sweep unique thresholds from high to low; group tied scores."""
     y_true, p = np.asarray(y_true, int), np.asarray(p, float)
     positives, negatives = np.sum(y_true == 1), np.sum(y_true == 0)
     if not positives or not negatives:
@@ -265,7 +222,6 @@ def auc_trapezoid(fpr, tpr):
 
 
 def gaussian_pdf(x, mu, var):
-    """Vectorised density; a tiny variance floor handles a constant feature."""
     var = np.maximum(np.asarray(var, float), 1e-12)
     return np.exp(-0.5 * (np.asarray(x) - mu) ** 2 / var) / np.sqrt(2 * np.pi * var)
 
@@ -279,7 +235,7 @@ def fit_gaussian_nb(X, y):
             raise ValueError("Both classes must occur in the training data.")
         priors.append(len(Xc) / len(X))
         means.append(Xc.mean(axis=0))
-        variances.append(Xc.var(axis=0, ddof=0))  # MLE denominator n_c.
+        variances.append(Xc.var(axis=0, ddof=0))
     return np.array(priors), np.array(means), np.array(variances)
 
 
@@ -298,13 +254,6 @@ def predict_proba_nb(X, priors, means, variances):
 
 
 def fit_categorical_nb(e, y, l):
-    """Return a class-by-category table for Lab 8's four-category feature.
-
-    This handout has all four categories in training, with one absent
-    within one class. If a category is absent from training entirely,
-    define the full vocabulary from the known schema and reindex counts
-    before applying the same formula; do not infer it from test counts.
-    """
     e, y = np.asarray(e), np.asarray(y, int)
     categories = np.unique(e)
     if len(categories) != 4:
@@ -325,7 +274,6 @@ def predict_proba_mixed_nb(X, e, priors, means, variances, category_table):
 
 
 def random_init(X, K, seed):
-    """K distinct row indices, exactly the initialisation specified in Lab 9."""
     X = np.asarray(X, float)
     idx = np.random.default_rng(seed).choice(len(X), K, replace=False)
     return X[idx].copy()
@@ -342,7 +290,6 @@ def update_centroids(X, labels, centroids):
         points = X[labels == c]
         if len(points):
             updated[c] = points.mean(axis=0)
-        # An empty cluster keeps its previous centroid, as the handout requires.
     return updated
 
 
@@ -361,7 +308,6 @@ def kmeans(X, init_centroids, max_iter=100):
         centroids = updated
         if converged:
             break
-    # Reassign so every returned label refers to the returned centroids.
     labels = assign_clusters(X, centroids)
     return centroids, labels, distortion(X, labels, centroids), iteration
 
@@ -378,7 +324,6 @@ def best_of_kmeans(X, K, n_init=10):
 
 
 def kmeans_pp_init(X, K, seed):
-    """One RNG; successive sampling probabilities proportional to D(x)^2."""
     X = np.asarray(X, float)
     if not 1 <= K <= len(X):
         raise ValueError("K must be between 1 and the number of data rows.")
